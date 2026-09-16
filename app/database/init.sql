@@ -1,0 +1,47 @@
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  full_name VARCHAR(100) NOT NULL,
+  email VARCHAR(150) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  role VARCHAR(20) NOT NULL CHECK (role IN ('FARMER', 'RETAILER', 'ADMIN')),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE products (
+  id SERIAL PRIMARY KEY,
+  farmer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  product_name VARCHAR(120) NOT NULL,
+  category VARCHAR(80),
+  unit VARCHAR(30) NOT NULL,
+  price_per_unit DECIMAL(10, 2) NOT NULL CHECK (price_per_unit > 0),
+  available_quantity INTEGER NOT NULL DEFAULT 0 CHECK (available_quantity >= 0),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE orders (
+  id SERIAL PRIMARY KEY,
+  retailer_id INTEGER NOT NULL REFERENCES users(id),
+  status VARCHAR(30) NOT NULL DEFAULT 'PENDING'
+    CHECK (status IN ('PENDING', 'CONFIRMED', 'PACKED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED')),
+  total_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE order_items (
+  id SERIAL PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  price_per_unit DECIMAL(10, 2) NOT NULL CHECK (price_per_unit > 0)
+);
+
+CREATE TABLE audit_logs (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id),
+  action VARCHAR(100) NOT NULL,
+  entity_type VARCHAR(50) NOT NULL,
+  entity_id INTEGER,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

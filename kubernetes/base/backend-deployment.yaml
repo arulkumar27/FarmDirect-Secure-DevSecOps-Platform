@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: farmdirect
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: backend
+
+  template:
+    metadata:
+      labels:
+        app: backend
+
+    spec:
+      automountServiceAccountToken: false
+
+      containers:
+        - name: backend
+          image: farmdirect-staging-backend:1.0.0
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 5000
+
+          envFrom:
+            - secretRef:
+                name: farmdirect-secrets
+
+          env:
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: farmdirect-backend-config
+                  key: PORT
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: farmdirect-backend-config
+                  key: DB_HOST
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: farmdirect-backend-config
+                  key: DB_PORT
+            - name: CLIENT_ORIGIN
+              valueFrom:
+                configMapKeyRef:
+                  name: farmdirect-backend-config
+                  key: CLIENT_ORIGIN
+
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 5000
+            initialDelaySeconds: 20
+            periodSeconds: 20
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+              ephemeral-storage: 256Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+              ephemeral-storage: 512Mi

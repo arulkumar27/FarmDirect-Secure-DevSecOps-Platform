@@ -1,0 +1,31 @@
+# Node.js
+node_modules/
+npm-debug.log*
+coverage/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Terraform sensitive files
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+*.tfplan
+
+# Ansible
+ansible/inventory/hosts.ini
+
+# SSH and private keys
+*.pem
+*.ppk
+*.key
+
+# OS and editor files
+.DS_Store
+.vscode/
+
+kubernetes/local/

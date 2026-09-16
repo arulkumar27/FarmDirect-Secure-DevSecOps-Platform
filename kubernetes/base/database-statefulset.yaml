@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: database
+  namespace: farmdirect
+
+spec:
+  serviceName: database
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: database
+
+  template:
+    metadata:
+      labels:
+        app: database
+
+    spec:
+      automountServiceAccountToken: false
+
+      securityContext:
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+
+      initContainers:
+        - name: fix-postgres-volume-permissions
+          image: postgres:16-bookworm
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              chown -R 999:999 /var/lib/postgresql/data
+              chmod 700 /var/lib/postgresql/data
+              chown -R 999:999 /var/run/postgresql
+              chmod 775 /var/run/postgresql
+
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHOWN
+                - FOWNER
+                - DAC_OVERRIDE
+
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: postgres-run
+              mountPath: /var/run/postgresql
+
+      containers:
+        - name: postgres
+          image: postgres:16-bookworm
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 5432
+
+          envFrom:
+            - secretRef:
+                name: farmdirect-secrets
+
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+
+            - name: postgres-run
+              mountPath: /var/run/postgresql
+
+            - name: database-init
+              mountPath: /docker-entrypoint-initdb.d/01-init.sql
+              subPath: 01-init.sql
+              readOnly: true
+
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 20
+            periodSeconds: 20
+
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+              ephemeral-storage: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+              ephemeral-storage: 512Mi
+
+      volumes:
+        - name: postgres-run
+          emptyDir: {}
+
+        - name: database-init
+          configMap:
+            name: farmdirect-db-init
+
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: standard
+        resources:
+          requests:
+            storage: 1Gi

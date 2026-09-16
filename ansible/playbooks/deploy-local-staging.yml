@@ -1,0 +1,53 @@
+---
+- name: Deploy FarmDirect to local staging with Docker Compose
+  hosts: local_staging
+  gather_facts: false
+
+  vars:
+    project_root: /mnt/e/DevOps-Realtime-Projects/Project-04-FarmDirect-Secure-DevSecOps-Platform
+    docker_directory: "{{ project_root }}/docker"
+
+  tasks:
+    - name: Verify Docker Desktop connection
+      ansible.builtin.command: docker version
+      changed_when: false
+
+    - name: Verify Docker Compose is available
+      ansible.builtin.command: docker compose version
+      changed_when: false
+
+    - name: Check whether local environment file exists
+      ansible.builtin.stat:
+        path: "{{ docker_directory }}/.env"
+      register: docker_env_file
+
+    - name: Create local environment file when missing
+      ansible.builtin.copy:
+        src: "{{ docker_directory }}/.env.example"
+        dest: "{{ docker_directory }}/.env"
+        remote_src: true
+        force: false
+      when: not docker_env_file.stat.exists
+
+    - name: Build and deploy FarmDirect staging containers
+      ansible.builtin.command: >
+        docker compose -p farmdirect-staging
+        -f docker-compose.yml
+        -f docker-compose.staging.yml
+        up -d --build
+      args:
+        chdir: "{{ docker_directory }}"
+
+    - name: Wait until the FarmDirect API is healthy
+      ansible.builtin.uri:
+        url: http://localhost:5001/api/health
+        method: GET
+        status_code: 200
+      register: health_check
+      retries: 12
+      delay: 5
+      until: health_check.status == 200
+
+    - name: Show deployment result
+      ansible.builtin.debug:
+        msg: "FarmDirect local staging deployment completed successfully."

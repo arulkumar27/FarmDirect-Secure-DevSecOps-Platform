@@ -1,0 +1,21 @@
+aws_region  = "ap-south-1"
+environment = "staging"
+
+# Cost safety: keep all false now.
+enable_nat_gateway        = false
+create_vpc_endpoints      = false
+enable_interface_endpoints = false
+create_alb                = false
+create_compute            = false
+create_database           = false
+create_acm_certificate    = false
+create_route53_record     = false
+
+# Fill only when you intentionally deploy AWS infrastructure.
+route53_zone_id = ""
+domain_name     = ""
+certificate_arn = ""
+
+database_name     = "farmdirect"
+database_username = "farmdirectadmin"
+database_password = ""

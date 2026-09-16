@@ -1,0 +1,36 @@
+groups:
+  - name: farmdirect-backend-alerts
+    rules:
+      - alert: FarmDirectBackendDown
+        expr: up{job="farmdirect-staging-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "FarmDirect Staging backend is down"
+          description: "Prometheus cannot reach the backend metrics endpoint for 1 minute."
+
+      - alert: FarmDirectHigh5xxRate
+        expr: |
+          sum(rate(farmdirect_http_requests_total{status_code=~"5.."}[5m]))
+          /
+          sum(rate(farmdirect_http_requests_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "FarmDirect backend 5xx error rate is high"
+          description: "More than 5% of backend requests returned a server error."
+
+      - alert: FarmDirectSlowApi
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(farmdirect_http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "FarmDirect API response time is slow"
+          description: "95% of backend requests take more than 1 second."
