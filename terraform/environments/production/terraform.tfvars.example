@@ -1,27 +1,18 @@
-aws_region  = "ap-south-1"
-environment = "production"
-
-# Keep false now: no AWS resources and no charges.
-enable_nat_gateway         = false
-create_vpc_endpoints       = false
-enable_interface_endpoints = false
-create_alb                 = false
-create_compute             = false
-create_database            = false
-create_acm_certificate     = false
-create_route53_record      = false
-
-# Fill only during an approved real production deployment.
-route53_zone_id = ""
-domain_name     = ""
-certificate_arn = ""
-
-database_name     = "farmdirect"
-database_username = "farmdirectadmin"
-database_password = ""
-
-# Production capacity after approval.
-instance_type     = "t3.small"
-min_instances     = 2
-desired_instances = 2
-max_instances     = 4
+aws_region="ap-south-1"
+environment="production"
+eks_cluster_name="farmdirect-production"
+allow_aws_apply=false
+node_instance_type="t3.small"
+desired_nodes=2
+min_nodes=2
+max_nodes=2
+enable_nat_gateway=true
+create_database=false
+create_secrets=false
+database_password="CHANGE_ME"
+jwt_secret="CHANGE_ME"
+domain_name="farmdirect.blacktunes.in"
+route53_zone_id=""
+create_acm_certificate=false
+create_vpc_endpoints=false
+enable_interface_endpoints=false

@@ -1,33 +1,43 @@
-variable "environment" {
-  type = string
+variable "name" {
+    type=string
 }
 
 variable "vpc_id" {
-  type = string
+    type=string
 }
 
-variable "private_app_subnet_ids" {
-  type = list(string)
+variable "vpc_cidr" {
+    type=string
 }
 
-variable "private_app_route_table_id" {
-  type = string
+variable "region" {
+    type=string
 }
 
-variable "frontend_security_group_id" {
-  type = string
+variable "subnet_ids" {
+    type=list(string)
 }
 
-variable "backend_security_group_id" {
-  type = string
+variable "route_table_ids" {
+    type=list(string)
 }
 
-variable "create_vpc_endpoints" {
-  type    = bool
-  default = false
+variable "create_endpoints" {
+    type=bool
+    default=false
 }
 
-variable "enable_interface_endpoints" {
-  type    = bool
-  default = false
+variable "create_interface_endpoints" {
+    type=bool
+    default=false
+}
+
+variable "services" {
+    type=list(string)
+    default=["ecr.api","ecr.dkr","logs","sts","secretsmanager"]
+}
+
+variable "tags" {
+    type=map(string)
+    default={}
 }

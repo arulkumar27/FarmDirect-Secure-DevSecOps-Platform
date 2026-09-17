@@ -1,41 +1,44 @@
-variable "environment" {
-  type = string
+variable "name" {
+    type=string
+}
+    
+variable "subnet_ids" {
+    type=list(string)
 }
 
-variable "private_database_subnet_ids" {
-  type = list(string)
-}
-
-variable "database_security_group_id" {
-  type = string
+variable "security_group_id" {
+    type=string
 }
 
 variable "database_name" {
-  type = string
+    type=string
 }
 
 variable "database_username" {
-  type = string
+    type=string
 }
 
 variable "database_password" {
-  type      = string
-  sensitive = true
+    type=string
+    sensitive=true
 }
 
-variable "create_database" {
-  type    = bool
-  default = false
+variable "engine_version" {
+    type=string
+    default="16"
 }
 
-variable "deletion_protection" {
-  description = "Keep false for the controlled short AWS demo."
-  type        = bool
-  default     = false
+variable "instance_class" {
+    type=string
+    default="db.t3.micro"
 }
 
-variable "skip_final_snapshot" {
-  description = "Keep true for the controlled short AWS demo."
-  type        = bool
-  default     = true
+variable "storage" {
+    type=number
+    default=20
+}
+
+variable "tags" {
+    type=map(string)
+    default={}
 }

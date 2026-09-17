@@ -1,8 +1,7 @@
-output "database_endpoint" {
-  value     = try(aws_db_instance.farmdirect[0].address, null)
-  sensitive = true
+output "endpoint" {
+    value=aws_db_instance.this.address
 }
 
-output "database_port" {
-  value = try(aws_db_instance.farmdirect[0].port, null)
+output "arn" {
+    value=aws_db_instance.this.arn
 }

@@ -12,9 +12,31 @@ coverage/
 *.tfstate
 *.tfstate.*
 .terraform/
-.terraform.lock.hcl
 terraform.tfvars
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Terraform variables containing secrets
+*.tfvars
+*.tfvars.json
+
+# Terraform crash logs
+crash.log
+crash.*.log
+
+# Terraform plan files
 *.tfplan
+*.plan
+
+# Terraform override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 
 # Ansible
 ansible/inventory/hosts.ini

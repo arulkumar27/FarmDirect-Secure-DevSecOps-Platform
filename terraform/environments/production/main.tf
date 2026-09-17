@@ -1,129 +1,133 @@
+locals {
+  name = "farmdirect-staging"
+  tags = {
+    Project     = "FarmDirect"
+    Environment = var.environment
+  }
+}
+
 module "network" {
   source = "../../modules/network"
 
-  environment                   = var.environment
-  vpc_cidr                      = var.vpc_cidr
-  availability_zones            = var.availability_zones
-  public_subnet_cidrs           = var.public_subnet_cidrs
-  private_app_subnet_cidrs      = var.private_app_subnet_cidrs
-  private_database_subnet_cidrs = var.private_database_subnet_cidrs
-
+  name               = local.name
+  vpc_cidr           = var.vpc_cidr
+  eks_cluster_name   = var.eks_cluster_name
+  public_subnets     = var.public_subnets
+  app_subnets        = var.app_subnets
+  db_subnets         = var.db_subnets
   enable_nat_gateway = var.enable_nat_gateway
+  tags               = local.tags
 }
 
 module "security" {
   source = "../../modules/security"
 
-  environment = var.environment
-  vpc_id      = module.network.vpc_id
+  name   = local.name
+  vpc_id = module.network.vpc_id
+  tags   = local.tags
 }
 
-module "endpoints" {
-  source = "../../modules/endpoints"
+module "iam" {
+  source = "../../modules/iam"
 
-  environment                = var.environment
-  vpc_id                     = module.network.vpc_id
-  private_app_subnet_ids     = module.network.private_app_subnet_ids
-  private_app_route_table_id = module.network.private_app_route_table_id
-  frontend_security_group_id = module.security.frontend_security_group_id
-  backend_security_group_id  = module.security.backend_security_group_id
-  create_vpc_endpoints       = var.create_vpc_endpoints
-  enable_interface_endpoints = var.enable_interface_endpoints
+  name = local.name
+  tags = local.tags
 }
 
 module "ecr" {
   source = "../../modules/ecr"
 
-  environment = var.environment
+  name = local.name
+  tags = local.tags
+}
+
+module "eks" {
+  source = "../../modules/eks"
+
+  depends_on                = [module.iam]
+  cluster_name              = var.eks_cluster_name
+  environment               = var.environment
+  kubernetes_version        = var.kubernetes_version
+  cluster_role_arn          = module.iam.cluster_role_arn
+  node_role_arn             = module.iam.node_role_arn
+  subnet_ids                = module.network.app_subnet_ids
+  cluster_security_group_id = module.security.cluster_security_group_id
+  node_security_group_id    = module.security.node_security_group_id
+  instance_type             = var.node_instance_type
+  desired_nodes             = var.desired_nodes
+  min_nodes                 = var.min_nodes
+  max_nodes                 = var.max_nodes
+  cluster_log_types         = var.cluster_log_types
+  tags                      = local.tags
+}
+
+module "irsa" {
+  source = "../../modules/irsa"
+
+  depends_on  = [module.eks]
+  oidc_issuer = module.eks.oidc_issuer
+  tags        = local.tags
+}
+
+module "load_balancer_controller" {
+  source = "../../modules/load_balancer_controller"
+
+  depends_on        = [module.irsa]
+  name              = local.name
+  oidc_provider_arn = module.irsa.provider_arn
+  oidc_issuer       = module.eks.oidc_issuer
+  tags              = local.tags
+}
+
+module "database" {
+  count  = var.create_database ? 1 : 0
+  source = "../../modules/database"
+
+  name              = local.name
+  subnet_ids        = module.network.db_subnet_ids
+  security_group_id = module.security.db_security_group_id
+  database_name     = var.database_name
+  database_username = var.database_username
+  database_password = var.database_password
+  tags              = local.tags
+}
+
+module "secrets" {
+  count  = var.create_secrets ? 1 : 0
+  source = "../../modules/secrets"
+
+  name              = local.name
+  database_name     = var.database_name
+  database_username = var.database_username
+  database_password = var.database_password
+  jwt_secret        = var.jwt_secret
+  tags              = local.tags
 }
 
 module "logging" {
   source = "../../modules/logging"
-
-  environment = var.environment
-}
-
-module "secrets" {
-  source = "../../modules/secrets"
-
-  environment       = var.environment
-  database_password = var.database_password
-  jwt_secret        = var.jwt_secret
-  create_secrets    = var.create_secrets
-}
-
-module "database" {
-  source = "../../modules/database"
-
-  environment                 = var.environment
-  private_database_subnet_ids = module.network.private_database_subnet_ids
-  database_security_group_id  = module.security.database_security_group_id
-  database_name               = var.database_name
-  database_username           = var.database_username
-  database_password           = var.database_password
-  create_database             = var.create_database
-  deletion_protection         = var.database_deletion_protection
-  skip_final_snapshot         = var.database_skip_final_snapshot
+  name   = local.name
+  tags   = local.tags
 }
 
 module "acm" {
-  source = "../../modules/acm"
-
-  environment            = var.environment
-  route53_zone_id        = var.route53_zone_id
-  domain_name            = var.domain_name
-  create_acm_certificate = var.create_acm_certificate
+  source             = "../../modules/acm"
+  domain_name        = var.domain_name
+  zone_id            = var.route53_zone_id
+  create_certificate = var.create_acm_certificate
+  tags               = local.tags
 }
 
-module "load_balancer" {
-  source = "../../modules/load-balancer"
+module "endpoints" {
+  source = "../../modules/endpoints"
 
-  environment                 = var.environment
-  vpc_id                      = module.network.vpc_id
-  public_subnet_ids           = module.network.public_subnet_ids
-  alb_security_group_id       = module.security.alb_security_group_id
-  certificate_arn             = coalesce(module.acm.certificate_arn, var.certificate_arn, "not-configured")
-  alb_access_logs_bucket_name = module.logging.alb_logs_bucket_name
-  create_alb                  = var.create_alb
-  enable_deletion_protection  = var.alb_deletion_protection
-}
-
-module "ecs" {
-  source     = "../../modules/ecs"
-  depends_on = [module.endpoints]
-
-  environment                = var.environment
-  private_app_subnet_ids     = module.network.private_app_subnet_ids
-  frontend_security_group_id = module.security.frontend_security_group_id
-  backend_security_group_id  = module.security.backend_security_group_id
-
-  frontend_target_group_arn = module.load_balancer.frontend_target_group_arn
-  backend_target_group_arn  = module.load_balancer.backend_target_group_arn
-
-  frontend_image = "${module.ecr.frontend_repository_url}:${var.frontend_image_tag}"
-  backend_image  = "${module.ecr.backend_repository_url}:${var.backend_image_tag}"
-
-  database_host                = module.database.database_endpoint
-  database_name                = var.database_name
-  database_username            = var.database_username
-  database_password_secret_arn = module.secrets.database_password_secret_arn
-  jwt_secret_arn               = module.secrets.jwt_secret_arn
-  application_domain           = var.domain_name
-
-  frontend_desired_count = var.frontend_desired_count
-  backend_desired_count  = var.backend_desired_count
-  backend_min_count      = var.backend_min_count
-  backend_max_count      = var.backend_max_count
-  create_ecs             = var.create_ecs
-}
-
-module "dns" {
-  source = "../../modules/dns"
-
-  environment           = var.environment
-  route53_zone_id       = var.route53_zone_id
-  domain_name           = var.domain_name
-  alb_dns_name          = module.load_balancer.alb_dns_name
-  alb_zone_id           = module.load_balancer.alb_zone_id
-  create_route53_record = var.create_route53_record
+  name                       = local.name
+  vpc_id                     = module.network.vpc_id
+  vpc_cidr                   = var.vpc_cidr
+  region                     = var.aws_region
+  subnet_ids                 = module.network.app_subnet_ids
+  route_table_ids            = module.network.app_route_table_ids
+  create_endpoints           = var.create_vpc_endpoints
+  create_interface_endpoints = var.enable_interface_endpoints
+  tags                       = local.tags
 }

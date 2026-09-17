@@ -1,4 +1,3 @@
 output "certificate_arn" {
-  description = "Validated ACM certificate ARN used by the ALB HTTPS listener."
-  value       = try(aws_acm_certificate_validation.farmdirect[0].certificate_arn, null)
+  value = var.create_certificate && var.zone_id != "" ? aws_acm_certificate_validation.this[0].certificate_arn : null
 }

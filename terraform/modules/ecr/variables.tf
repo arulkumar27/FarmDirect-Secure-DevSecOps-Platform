@@ -1,4 +1,8 @@
-variable "environment" {
-  description = "Environment name used in ECR repository names."
-  type        = string
+variable "name" {
+    type=string
+}
+
+variable "tags" {
+    type=map(string)
+    default={}
 }

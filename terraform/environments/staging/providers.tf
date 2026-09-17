@@ -6,7 +6,6 @@ provider "aws" {
       Project     = "FarmDirect"
       Environment = var.environment
       ManagedBy   = "Terraform"
-      Repository  = "DevOps-Realtime-Projects"
     }
   }
 }

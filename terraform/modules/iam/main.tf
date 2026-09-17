@@ -1,43 +1,53 @@
-resource "aws_iam_role" "application" {
-  name = "farmdirect-${var.environment}-ec2-role"
+data "aws_iam_policy_document" "eks" {
+    statement {
+        principals {
+            type="Service"
+            identifiers=["eks.amazonaws.com"]
+        }
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-
-    Statement = [{
-      Effect = "Allow"
-
-      Principal = {
-        Service = "ec2.amazonaws.com"
-      }
-
-      Action = "sts:AssumeRole"
-    }]
-  })
-
-  tags = {
-    Name        = "farmdirect-${var.environment}-ec2-role"
-    Environment = var.environment
-    Project     = "FarmDirect"
-  }
+        actions=["sts:AssumeRole"]
+    } 
 }
 
-resource "aws_iam_instance_profile" "application" {
-  name = "farmdirect-${var.environment}-instance-profile"
-  role = aws_iam_role.application.name
+resource "aws_iam_role" "cluster" {
+    name="${var.name}-eks-cluster-role"
+    assume_role_policy=data.aws_iam_policy_document.eks.json
+    tags=var.tags
 }
 
-resource "aws_iam_role_policy_attachment" "ssm" {
-  role       = aws_iam_role.application.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+resource "aws_iam_role_policy_attachment" "cluster" {
+    role=aws_iam_role.cluster.name
+    policy_arn="arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
-resource "aws_iam_role_policy_attachment" "ecr_pull" {
-  role       = aws_iam_role.application.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+data "aws_iam_policy_document" "node" {
+    statement {
+        principals {
+            type="Service"
+            identifiers=["ec2.amazonaws.com"]
+        }
+
+        actions=["sts:AssumeRole"]
+    }
 }
 
-resource "aws_iam_role_policy_attachment" "cloudwatch" {
-  role       = aws_iam_role.application.name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+resource "aws_iam_role" "node" {
+    name="${var.name}-eks-node-role"
+    assume_role_policy=data.aws_iam_policy_document.node.json
+    tags=var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "worker" {
+    role=aws_iam_role.node.name
+    policy_arn="arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "cni" {
+    role=aws_iam_role.node.name
+    policy_arn="arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+}
+
+resource "aws_iam_role_policy_attachment" "ecr" {
+    role=aws_iam_role.node.name
+    policy_arn="arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly"
 }

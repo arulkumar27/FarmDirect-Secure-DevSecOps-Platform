@@ -1,10 +1,6 @@
-variable "name" {
+variable "oidc_issuer" {
     type=string
-}
-
-variable "vpc_id" {
-    type=string
-}
+    }
 
 variable "tags" {
     type=map(string)

@@ -1,16 +1,19 @@
-variable "environment" {
-  type = string
-}
-
-variable "route53_zone_id" {
-  type = string
-}
-
 variable "domain_name" {
-  type = string
-}
+    type=string
+    default=""
+    }
 
-variable "create_acm_certificate" {
-  type    = bool
-  default = false
-}
+variable "zone_id" {
+    type=string
+    default=""
+    }
+
+variable "create_certificate" {
+    type=bool
+    default=false
+    }
+
+variable "tags" {
+    type=map(string)
+    default={}
+    }

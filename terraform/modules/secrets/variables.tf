@@ -1,23 +1,26 @@
-variable "environment" {
-  type = string
+variable "name" {
+    type=string
+}
+
+variable "database_name" {
+    type=string
+}
+
+variable "database_username" {
+    type=string
 }
 
 variable "database_password" {
-  description = "Database password supplied locally during Terraform apply. Never commit it."
-  type        = string
-  sensitive   = true
-  default     = ""
+    type=string
+    sensitive=true
 }
 
 variable "jwt_secret" {
-  description = "JWT secret supplied locally during Terraform apply. Never commit it."
-  type        = string
-  sensitive   = true
-  default     = ""
+    type=string
+    sensitive=true
 }
 
-variable "create_secrets" {
-  description = "Safety switch. Secrets create only when intentionally enabled."
-  type        = bool
-  default     = false
+variable "tags" {
+    type=map(string)
+    default={}
 }

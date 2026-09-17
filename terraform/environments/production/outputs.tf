@@ -2,59 +2,50 @@ output "vpc_id" {
   value = module.network.vpc_id
 }
 
-output "public_subnet_ids" {
-  value = module.network.public_subnet_ids
+output "eks_cluster_name" {
+  value = module.eks.cluster_name
 }
 
-output "private_app_subnet_ids" {
-  value = module.network.private_app_subnet_ids
+output "eks_endpoint" {
+  value = module.eks.endpoint
 }
 
-output "private_database_subnet_ids" {
-  value = module.network.private_database_subnet_ids
+output "eks_oidc_issuer" {
+  value = module.eks.oidc_issuer
 }
 
-output "frontend_ecr_repository" {
-  value = module.ecr.frontend_repository_url
+output "eks_node_group_name" {
+  value = module.eks.node_group_name
 }
 
-output "backend_ecr_repository" {
+output "node_security_group" {
+  value = module.security.node_security_group_id
+}
+
+output "alb_security_group_id" {
+  value = module.security.alb_security_group_id
+}
+
+output "backend_ecr_url" {
   value = module.ecr.backend_repository_url
 }
 
-output "alb_logs_bucket" {
-  value = module.logging.alb_logs_bucket_name
+output "frontend_ecr_url" {
+  value = module.ecr.frontend_repository_url
 }
 
-output "application_domain" {
-  value = var.domain_name
-}
-
-output "alb_dns_name" {
-  value = module.load_balancer.alb_dns_name
-}
-
-output "frontend_target_group_arn" {
-  value = module.load_balancer.frontend_target_group_arn
-}
-
-output "backend_target_group_arn" {
-  value = module.load_balancer.backend_target_group_arn
-}
-
-output "ecs_cluster_name" {
-  value = module.ecs.cluster_name
-}
-
-output "frontend_ecs_service" {
-  value = module.ecs.frontend_service_name
-}
-
-output "backend_ecs_service" {
-  value = module.ecs.backend_service_name
+output "aws_load_balancer_controller_role_arn" {
+  value = module.load_balancer_controller.role_arn
 }
 
 output "database_endpoint" {
-  value     = module.database.database_endpoint
-  sensitive = true
+  value = try(module.database[0].endpoint, null)
+}
+
+output "app_secret_arn" {
+  value = try(module.secrets[0].secret_arn, null)
+}
+
+output "acm_certificate_arn" {
+  value = module.acm.certificate_arn
 }

@@ -1,10 +1,8 @@
-resource "terraform_data" "aws_apply_safety_gate" {
-  input = var.allow_aws_apply
-
-  lifecycle {
-    precondition {
-      condition     = var.allow_aws_apply
-      error_message = "AWS deployment safety lock is ON. Keep allow_aws_apply=false for validation. Set it to true only during the short, approved live demo."
+resource "terraform_data" "apply_gate" {
+    lifecycle {
+        precondition {
+            condition=var.allow_aws_apply
+            error_message="AWS apply is blocked. Set allow_aws_apply=true for an intentional apply."
+        }
     }
-  }
 }
