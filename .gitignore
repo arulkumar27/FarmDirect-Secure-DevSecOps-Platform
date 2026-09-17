@@ -50,4 +50,6 @@ ansible/inventory/hosts.ini
 .DS_Store
 .vscode/
 
+docker/.env
+
 kubernetes/local/

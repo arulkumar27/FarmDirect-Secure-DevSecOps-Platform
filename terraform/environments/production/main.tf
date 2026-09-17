@@ -1,5 +1,5 @@
 locals {
-  name = "farmdirect-staging"
+  name = "farmdirect-production"
   tags = {
     Project     = "FarmDirect"
     Environment = var.environment

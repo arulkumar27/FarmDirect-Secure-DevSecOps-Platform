@@ -1,25 +1,22 @@
-```groovy
 pipeline {
     agent any
 
     environment {
-        // Docker image names
-        BACKEND_IMAGE  = "farmdirect-backend"
-        FRONTEND_IMAGE = "farmdirect-frontend"
+        AWS_REGION    = 'ap-south-1'
+        EKS_CLUSTER   = 'farmdirect-production'
+        NAMESPACE     = 'farmdirect'
 
-        // Kubernetes
-        K8S_NAMESPACE = "farmdirect"
+        BACKEND_IMAGE  = 'farmdirect-backend'
+        FRONTEND_IMAGE = 'farmdirect-frontend'
 
-        // Kind cluster for local Jenkins/Kubernetes deployment
-        KIND_CLUSTER = "farmdirect"
-
-        // Image tag generated from Jenkins build number
+        AWS_CREDENTIALS = 'aws-jenkins'
         IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
     options {
         timestamps()
         disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
     stages {
@@ -30,231 +27,186 @@ pipeline {
             }
         }
 
-        stage('Verify Project Structure') {
+        stage('Test & Build') {
             steps {
-                bat '''
-                    echo ==============================
-                    echo Checking FarmDirect structure
-                    echo ==============================
+                sh '''
+                    set -e
 
-                    if not exist app (
-                        echo ERROR: app directory not found
-                        exit /b 1
-                    )
+                    echo "=== Backend ==="
+                    cd app/backend
+                    npm ci
+                    npm test -- --passWithNoTests
 
-                    if not exist app\\backend (
-                        echo ERROR: backend directory not found
-                        exit /b 1
-                    )
-
-                    if not exist app\\frontend (
-                        echo ERROR: frontend directory not found
-                        exit /b 1
-                    )
-
-                    if not exist kubernetes (
-                        echo ERROR: kubernetes directory not found
-                        exit /b 1
-                    )
-
-                    if not exist docker (
-                        echo ERROR: docker directory not found
-                        exit /b 1
-                    )
-
-                    echo Project structure OK.
+                    echo "=== Frontend ==="
+                    cd ../frontend
+                    npm ci
+                    npm run build
                 '''
             }
         }
 
-        stage('Backend Dependencies') {
+        stage('Security') {
             steps {
-                dir('app/backend') {
-                    bat 'npm ci'
-                }
-            }
-        }
+                sh '''
+                    set -e
 
-        stage('Backend Tests') {
-            steps {
-                dir('app/backend') {
-                    bat 'npm test -- --passWithNoTests'
-                }
-            }
-        }
-
-        stage('Frontend Dependencies') {
-            steps {
-                dir('app/frontend') {
-                    bat 'npm ci'
-                }
-            }
-        }
-
-        stage('Frontend Build') {
-            steps {
-                dir('app/frontend') {
-                    bat 'npm run build'
-                }
-            }
-        }
-
-        stage('SonarQube Analysis') {
-            steps {
-                echo 'Running SonarQube analysis...'
-
-                // Requires SonarScanner to be installed/configured
-                // in the Jenkins agent PATH.
-                bat '''
-                    if exist sonar-project.properties (
-                        sonar-scanner
-                    ) else (
-                        echo sonar-project.properties not found.
-                        echo Skipping SonarQube analysis.
-                    )
-                '''
-            }
-        }
-
-        stage('Secret Scan') {
-            steps {
-                echo 'Running Gitleaks secret scan...'
-
-                bat '''
+                    echo "=== Gitleaks ==="
                     gitleaks detect --source . --no-banner --redact
+
+                    echo "=== Trivy Filesystem Scan ==="
+                    trivy fs --severity HIGH,CRITICAL --exit-code 0 .
                 '''
             }
         }
 
-        stage('Build Docker Images') {
+        stage('SonarQube') {
             steps {
-                echo "Building Docker images with tag ${IMAGE_TAG}..."
-
-                bat """
-                    docker build -t %BACKEND_IMAGE%:%IMAGE_TAG% -f app/backend/Dockerfile app/backend
-                    docker build -t %FRONTEND_IMAGE%:%IMAGE_TAG% -f app/frontend/Dockerfile app/frontend
-                """
+                withSonarQubeEnv('SonarQube') {
+                    sh '''
+                        if [ -f sonar-project.properties ]; then
+                            sonar-scanner
+                        else
+                            echo "SonarQube configuration not found - skipping"
+                        fi
+                    '''
+                }
             }
         }
 
-        stage('Trivy Image Scan') {
+        stage('Docker Build & Scan') {
             steps {
-                echo 'Scanning Docker images with Trivy...'
+                sh '''
+                    set -e
 
-                bat """
-                    trivy image --exit-code 1 --severity HIGH,CRITICAL %BACKEND_IMAGE%:%IMAGE_TAG%
-                    trivy image --exit-code 1 --severity HIGH,CRITICAL %FRONTEND_IMAGE%:%IMAGE_TAG%
-                """
-            }
-        }
+                    docker build \
+                        -f docker/backend/Dockerfile \
+                        -t $BACKEND_IMAGE:$IMAGE_TAG .
 
-        stage('Prepare Kind Cluster') {
-            steps {
-                echo "Preparing Kind cluster: ${KIND_CLUSTER}"
+                    docker build \
+                        -f docker/frontend/Dockerfile \
+                        -t $FRONTEND_IMAGE:$IMAGE_TAG .
 
-                bat '''
-                    kind get clusters
-                '''
+                    echo "=== Backend Image Scan ==="
+                    trivy image \
+                        --severity HIGH,CRITICAL \
+                        --exit-code 1 \
+                        $BACKEND_IMAGE:$IMAGE_TAG
 
-                bat """
-                    kind get clusters | findstr /I "%KIND_CLUSTER%" >nul
-                    if errorlevel 1 (
-                        echo Creating Kind cluster...
-                        kind create cluster --name %KIND_CLUSTER%
-                    ) else (
-                        echo Kind cluster already exists.
-                    )
-                """
-            }
-        }
-
-        stage('Load Images into Kind') {
-            steps {
-                echo 'Loading Docker images into Kind...'
-
-                bat """
-                    kind load docker-image %BACKEND_IMAGE%:%IMAGE_TAG% --name %KIND_CLUSTER%
-                    kind load docker-image %FRONTEND_IMAGE%:%IMAGE_TAG% --name %KIND_CLUSTER%
-                """
-            }
-        }
-
-        stage('Create Kubernetes Namespace') {
-            steps {
-                bat '''
-                    kubectl apply -f kubernetes/base/namespace.yaml
+                    echo "=== Frontend Image Scan ==="
+                    trivy image \
+                        --severity HIGH,CRITICAL \
+                        --exit-code 1 \
+                        $FRONTEND_IMAGE:$IMAGE_TAG
                 '''
             }
         }
 
-        stage('Deploy Kubernetes Resources') {
+        stage('Push to ECR') {
             steps {
-                echo 'Deploying FarmDirect application to Kubernetes...'
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: "${AWS_CREDENTIALS}"]
+                ]) {
+                    sh '''
+                        set -e
 
-                bat '''
-                    kubectl apply -k kubernetes/base
-                '''
+                        ACCOUNT_ID=$(aws sts get-caller-identity \
+                            --query Account \
+                            --output text)
+
+                        ECR="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+
+                        aws ecr get-login-password \
+                            --region "$AWS_REGION" |
+                        docker login \
+                            --username AWS \
+                            --password-stdin "$ECR"
+
+                        docker tag \
+                            $BACKEND_IMAGE:$IMAGE_TAG \
+                            $ECR/$BACKEND_IMAGE:$IMAGE_TAG
+
+                        docker tag \
+                            $FRONTEND_IMAGE:$IMAGE_TAG \
+                            $ECR/$FRONTEND_IMAGE:$IMAGE_TAG
+
+                        docker push \
+                            $ECR/$BACKEND_IMAGE:$IMAGE_TAG
+
+                        docker push \
+                            $ECR/$FRONTEND_IMAGE:$IMAGE_TAG
+                    '''
+                }
             }
         }
 
-        stage('Update Application Images') {
+        stage('Deploy to EKS') {
             steps {
-                echo 'Updating Kubernetes deployments with current build images...'
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: "${AWS_CREDENTIALS}"]
+                ]) {
+                    sh '''
+                        set -e
 
-                bat """
-                    kubectl -n %K8S_NAMESPACE% set image deployment/backend backend=%BACKEND_IMAGE%:%IMAGE_TAG%
-                    kubectl -n %K8S_NAMESPACE% set image deployment/frontend frontend=%FRONTEND_IMAGE%:%IMAGE_TAG%
-                """
+                        aws eks update-kubeconfig \
+                            --region "$AWS_REGION" \
+                            --name "$EKS_CLUSTER"
+
+                        kubectl apply -k kubernetes/base
+
+                        ACCOUNT_ID=$(aws sts get-caller-identity \
+                            --query Account \
+                            --output text)
+
+                        ECR="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+
+                        kubectl -n "$NAMESPACE" set image \
+                            deployment/backend \
+                            backend=$ECR/$BACKEND_IMAGE:$IMAGE_TAG
+
+                        kubectl -n "$NAMESPACE" set image \
+                            deployment/frontend \
+                            frontend=$ECR/$FRONTEND_IMAGE:$IMAGE_TAG
+
+                        kubectl -n "$NAMESPACE" rollout status \
+                            deployment/backend \
+                            --timeout=5m
+
+                        kubectl -n "$NAMESPACE" rollout status \
+                            deployment/frontend \
+                            --timeout=5m
+                    '''
+                }
             }
         }
 
-        stage('Wait for Rollout') {
+        stage('Verify') {
             steps {
-                echo 'Waiting for Kubernetes deployments...'
-
-                bat """
-                    kubectl -n %K8S_NAMESPACE% rollout status deployment/backend --timeout=180s
-                    kubectl -n %K8S_NAMESPACE% rollout status deployment/frontend --timeout=180s
-                """
-            }
-        }
-
-        stage('Verify Kubernetes') {
-            steps {
-                echo 'Checking Kubernetes resources...'
-
-                bat '''
+                sh '''
+                    echo "=== Nodes ==="
                     kubectl get nodes
-                    kubectl get pods -n %K8S_NAMESPACE%
-                    kubectl get services -n %K8S_NAMESPACE%
-                    kubectl get deployments -n %K8S_NAMESPACE%
+
+                    echo "=== Pods ==="
+                    kubectl get pods -n "$NAMESPACE"
+
+                    echo "=== Services ==="
+                    kubectl get svc -n "$NAMESPACE"
+
+                    echo "=== Deployments ==="
+                    kubectl get deployments -n "$NAMESPACE"
                 '''
             }
         }
     }
 
     post {
-
         success {
-            echo '''
-            ==========================================
-            FarmDirect Pipeline Completed Successfully
-            ==========================================
-            '''
+            echo 'FarmDirect deployment completed successfully.'
         }
 
         failure {
-            echo '''
-            ==========================================
-            FarmDirect Pipeline Failed
-            Check the stage logs for the failure.
-            ==========================================
-            '''
-        }
-
-        always {
-            echo 'Pipeline execution completed.'
+            echo 'FarmDirect deployment failed. Check the failed stage.'
         }
     }
 }
-```
